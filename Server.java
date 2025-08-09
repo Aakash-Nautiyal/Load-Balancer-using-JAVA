@@ -15,20 +15,36 @@ public class Server extends Thread {
         serverQueue.put(request);  // send request to this server
     }
 
+    public int getPendingRequests(){
+        return serverQueue.size();
+    }
+
+    public int getServerId(){
+        return id;
+    }
+
     @Override
     public void run() {
         while (running) {
             try {
                 UserRequest req = serverQueue.take();
                 System.out.println("Server " + id + " processing: " + req);
-                Thread.sleep(req.getRequestSize() * 10); // simulate work
+
+                // Simulate more realistic processing time:
+                // Base time + variable time (non-linear scaling) + random jitter
+                int baseTime = 50; // minimum time in ms
+                int variableTime = (int) Math.pow(req.getRequestSize(), 1.5); // more dramatic growth
+                int jitter = (int) (Math.random() * 200); // ±200 ms random delay
+
+                Thread.sleep(baseTime + variableTime + jitter);
+
             } catch (InterruptedException e) {
-                // Thread was interrupted — time to exit
-                running = false;
+                running = false; // Exit gracefully
             }
         }
         System.out.println("Server " + id + " stopped.");
     }
+
 
     // Safe shutdown method
     public void shutdown() {

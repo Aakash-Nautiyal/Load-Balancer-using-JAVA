@@ -3,6 +3,7 @@ import java.awt.*;
 import java.io.ObjectInputStream;
 import java.net.ServerSocket;
 import java.net.Socket;
+import java.util.Comparator;
 import java.util.List;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.CopyOnWriteArrayList;
@@ -14,6 +15,7 @@ public class LoadBalancer {
     public static final List<Server> serverList = new CopyOnWriteArrayList<>();
     public static String currentAlgorithm = "RoundRobin";
     public static int totalRequests = 0;
+    public static int serverCount=2;
 
     // UI Components (global so we can update them from anywhere)
     private static JLabel lblAlgorithm;
@@ -67,14 +69,41 @@ public class LoadBalancer {
                         continue;
                     }
 
-                    Server server = serverList.get(index % serverList.size());
+                    Server server;
+
+                    switch (currentAlgorithm) {
+                        case "LeastConnections":
+                            // Find the server with the fewest pending requests
+                            server = serverList.stream()
+                                    .min((s1, s2) -> Integer.compare(
+                                            s1.getPendingRequests(),
+                                            s2.getPendingRequests()
+                                    ))
+                                    .orElse(serverList.get(0));
+                            break;
+
+                        case "IPHashing":
+                            // Use hash of the IP to pick a server
+                            int hash = request.getIP().hashCode();
+                            int serverIndex = Math.abs(hash % serverList.size());
+                            server = serverList.get(serverIndex);
+                            break;
+
+                        case "RoundRobin":
+                        default:
+                            // Classic round robin
+                            server = serverList.get(index % serverList.size());
+                            index++;
+                            break;
+                    }
+
+                    // Send request to the chosen server
                     server.addRequest(request);
 
                     totalRequests++;
                     updateUILabels();
 
-                    System.out.println("Dispatcher sent request to Server " + (index % serverList.size()));
-                    index++;
+                    System.out.println("Dispatcher sent request to Server " + server.getServerId());
 
                 } catch (InterruptedException e) {
                     System.out.println("Dispatcher interrupted.");
@@ -85,6 +114,7 @@ public class LoadBalancer {
             }
         }, "Dispatcher").start();
     }
+
 
     // ================= UI CODE =================
     private static void createAndShowUI() {
@@ -99,14 +129,14 @@ public class LoadBalancer {
 
         JButton btnAddServer = new JButton("Add Server");
         JButton btnRemoveServer = new JButton("Remove Server");
-        JButton btnShowAlgorithm = new JButton("Show Current Algorithm");
+        //JButton btnShowAlgorithm = new JButton("Show Current Algorithm");
         JButton btnChangeAlgorithm = new JButton("Change Algorithm");
 
         lblAlgorithm = new JLabel("Current Algorithm: " + currentAlgorithm);
         lblTotalServers = new JLabel("Total Servers: " + serverList.size());
         lblTotalRequests = new JLabel("Total Requests Made: " + totalRequests);
 
-        for (JButton btn : new JButton[]{btnAddServer, btnRemoveServer, btnShowAlgorithm, btnChangeAlgorithm}) {
+        for (JButton btn : new JButton[]{btnAddServer, btnRemoveServer, btnChangeAlgorithm}) {
             styleButton(btn, font, green);
         }
 
@@ -117,36 +147,36 @@ public class LoadBalancer {
         }
 
         btnAddServer.addActionListener(e -> {
-            Server newServer = new Server(serverList.size() + 1);
+            Server newServer = new Server(serverCount);
             serverList.add(newServer);
+            serverCount++;
             newServer.start();
             updateUILabels();
         });
 
         btnRemoveServer.addActionListener(e -> {
-            if (!serverList.isEmpty()) {
+            if (serverList.size()>1) {
                 Server s = serverList.remove(serverList.size() - 1);
+                serverCount--;
                 s.shutdown();
                 updateUILabels();
             }
+            else{
+                UIManager.put("OptionPane.background", Color.BLACK);
+                UIManager.put("Panel.background", Color.BLACK);
+                UIManager.put("OptionPane.messageForeground", new Color(0, 255, 70));
+                UIManager.put("Button.background", Color.BLACK);
+                UIManager.put("Button.foreground", new Color(0, 255, 70));
+                UIManager.put("OptionPane.font", new Font("Consolas", Font.BOLD, 16));
+
+                JOptionPane.showMessageDialog(
+                        frame,
+                        "There must be atleast 1 Running server",
+                        "Info",
+                        JOptionPane.INFORMATION_MESSAGE
+                );
+            }
         });
-
-        btnShowAlgorithm.addActionListener(e -> {
-            UIManager.put("OptionPane.background", Color.BLACK);
-            UIManager.put("Panel.background", Color.BLACK);
-            UIManager.put("OptionPane.messageForeground", new Color(0, 255, 70));
-            UIManager.put("Button.background", Color.BLACK);
-            UIManager.put("Button.foreground", new Color(0, 255, 70));
-            UIManager.put("OptionPane.font", new Font("Consolas", Font.BOLD, 16));
-
-            JOptionPane.showMessageDialog(
-                    frame,
-                    "Current Algorithm: " + currentAlgorithm,
-                    "Info",
-                    JOptionPane.INFORMATION_MESSAGE
-            );
-        });
-
 
         btnChangeAlgorithm.addActionListener(e -> {
             // Apply Matrix theme to dialog
@@ -159,7 +189,7 @@ public class LoadBalancer {
             UIManager.put("ComboBox.background", Color.BLACK);
             UIManager.put("ComboBox.foreground", new Color(0, 255, 70));
 
-            String[] algos = {"RoundRobin", "LeastConnections"};
+            String[] algos = {"RoundRobin", "LeastConnections","IPHashing"};
             String choice = (String) JOptionPane.showInputDialog(
                     frame,
                     "Select Algorithm:",
@@ -178,7 +208,6 @@ public class LoadBalancer {
 
         frame.add(btnAddServer);
         frame.add(btnRemoveServer);
-        frame.add(btnShowAlgorithm);
         frame.add(btnChangeAlgorithm);
         frame.add(lblAlgorithm);
         frame.add(lblTotalServers);
