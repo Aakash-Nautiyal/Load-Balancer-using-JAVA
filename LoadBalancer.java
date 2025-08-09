@@ -3,7 +3,6 @@ import java.awt.*;
 import java.io.ObjectInputStream;
 import java.net.ServerSocket;
 import java.net.Socket;
-import java.util.Comparator;
 import java.util.List;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.CopyOnWriteArrayList;
@@ -21,7 +20,7 @@ public class LoadBalancer {
     private static JLabel lblAlgorithm;
     private static JLabel lblTotalServers;
     private static JLabel lblTotalRequests;
-
+    private static NetworkHealthWindow networkHealthWindow;
     public static void main(String[] args) throws Exception {
 
         // Start server 1 by default
@@ -29,6 +28,7 @@ public class LoadBalancer {
         s1.start();
         serverList.add(s1);
 
+        networkHealthWindow = new NetworkHealthWindow();
         // Start dispatcher thread
         startDispatcherThread();
 
@@ -57,6 +57,8 @@ public class LoadBalancer {
         }
     }
 
+
+
     public static void startDispatcherThread() {
         new Thread(() -> {
             int index = 0;
@@ -70,10 +72,8 @@ public class LoadBalancer {
                     }
 
                     Server server;
-
                     switch (currentAlgorithm) {
                         case "LeastConnections":
-                            // Find the server with the fewest pending requests
                             server = serverList.stream()
                                     .min((s1, s2) -> Integer.compare(
                                             s1.getPendingRequests(),
@@ -83,7 +83,6 @@ public class LoadBalancer {
                             break;
 
                         case "IPHashing":
-                            // Use hash of the IP to pick a server
                             int hash = request.getIP().hashCode();
                             int serverIndex = Math.abs(hash % serverList.size());
                             server = serverList.get(serverIndex);
@@ -91,17 +90,17 @@ public class LoadBalancer {
 
                         case "RoundRobin":
                         default:
-                            // Classic round robin
                             server = serverList.get(index % serverList.size());
                             index++;
                             break;
                     }
 
-                    // Send request to the chosen server
                     server.addRequest(request);
-
                     totalRequests++;
                     updateUILabels();
+
+                    // Update GUI
+                    networkHealthWindow.updateData(serverList, server.getServerId());
 
                     System.out.println("Dispatcher sent request to Server " + server.getServerId());
 
