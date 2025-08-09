@@ -1,6 +1,7 @@
+import javax.swing.*;
+import java.awt.*;
 import java.io.ObjectOutputStream;
 import java.net.Socket;
-import java.util.Scanner;
 
 public class Main {
 
@@ -9,7 +10,55 @@ public class Main {
 
     public static void main(String[] args) {
 
-        // Thread 1: Sending requests
+        // ====== Matrix Theme UI for Slider ======
+        SwingUtilities.invokeLater(() -> {
+            JFrame frame = new JFrame("Request Delay Controller");
+            frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
+            frame.setSize(400, 150);
+            frame.setLayout(new BorderLayout());
+
+            // Matrix colors
+            Color matrixGreen = new Color(0, 255, 70);
+            Color matrixBlack = Color.BLACK;
+
+            // Label
+            JLabel label = new JLabel("Request Delay: " + delay + " ms", SwingConstants.CENTER);
+            label.setForeground(matrixGreen);
+            label.setFont(new Font("Consolas", Font.BOLD, 18));
+            label.setBackground(matrixBlack);
+            label.setOpaque(true);
+
+            // Slider
+            JSlider slider = new JSlider(100, 5000, delay); // min=100ms, max=5s
+            slider.setMajorTickSpacing(1000);
+            slider.setPaintTicks(true);
+            slider.setBackground(matrixBlack);
+            slider.setForeground(matrixGreen);
+            slider.addChangeListener(e -> {
+                delay = slider.getValue();
+                label.setText("Request Delay: " + delay + " ms");
+            });
+
+            // Ticks and labels styled
+            slider.setPaintLabels(true);
+            slider.setLabelTable(slider.createStandardLabels(1000));
+            java.util.Dictionary<Integer, JLabel> labelTable = slider.getLabelTable();
+            for (java.util.Enumeration<Integer> keys = labelTable.keys(); keys.hasMoreElements();) {
+                Integer key = keys.nextElement();
+                JLabel lbl = labelTable.get(key);
+                if (lbl != null) {
+                    lbl.setForeground(matrixGreen);
+                }
+            }
+
+            frame.add(label, BorderLayout.NORTH);
+            frame.add(slider, BorderLayout.CENTER);
+
+            frame.getContentPane().setBackground(matrixBlack);
+            frame.setVisible(true);
+        });
+
+        // ====== Thread 1: Sending requests ======
         Thread senderThread = new Thread(() -> {
             String host = "localhost";
             int port = 8081;
@@ -19,7 +68,6 @@ public class Main {
                      ObjectOutputStream out = new ObjectOutputStream(socket.getOutputStream())) {
 
                     UserRequest request = new UserRequest();
-
                     out.writeObject(request);
 
                 } catch (Exception e) {
@@ -34,27 +82,6 @@ public class Main {
             }
         });
 
-        // Thread 2: Listening for user input to change delay
-        Thread inputThread = new Thread(() -> {
-            Scanner scanner = new Scanner(System.in);
-            while (true) {
-                System.out.print("Enter new delay in ms (e.g., 500 or 2000): ");
-                try {
-                    int newDelay = Integer.parseInt(scanner.nextLine());
-                    if (newDelay >= 0) {
-                        delay = newDelay;
-                        System.out.println("Updated delay to " + delay + " ms.");
-                    } else {
-                        System.out.println("Please enter a non-negative number.");
-                    }
-                } catch (NumberFormatException e) {
-                    System.out.println("Invalid input. Please enter an integer.");
-                }
-            }
-        });
-
         senderThread.start();
-        inputThread.start();
     }
 }
-
