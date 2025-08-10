@@ -1,5 +1,6 @@
 import javax.swing.*;
 import java.awt.*;
+import java.awt.event.ItemEvent;
 import java.io.ObjectInputStream;
 import java.net.ServerSocket;
 import java.net.Socket;
@@ -21,6 +22,13 @@ public class LoadBalancer {
     private static JLabel lblTotalServers;
     private static JLabel lblTotalRequests;
     private static NetworkHealthWindow networkHealthWindow;
+
+    private static final int HIGH_PENDING_THRESHOLD = 5; // avg requests per server
+    private static final int LOW_PENDING_THRESHOLD = 1;
+    private static final int SCALE_CHECK_INTERVAL = 2000; // ms
+    private static volatile boolean autoScalingEnabled = false;
+
+
     public static void main(String[] args) throws Exception {
 
         // Start server 1 by default
@@ -31,6 +39,8 @@ public class LoadBalancer {
         networkHealthWindow = new NetworkHealthWindow();
         // Start dispatcher thread
         startDispatcherThread();
+
+        startAutoScalingThread();
 
         // Start the Swing UI in another thread
         SwingUtilities.invokeLater(LoadBalancer::createAndShowUI);
@@ -63,6 +73,7 @@ public class LoadBalancer {
         new Thread(() -> {
             int index = 0;
             while (true) {
+                System.out.println(requestQueue);
                 try {
                     UserRequest request = requestQueue.take();
 
@@ -128,8 +139,9 @@ public class LoadBalancer {
 
         JButton btnAddServer = new JButton("Add Server");
         JButton btnRemoveServer = new JButton("Remove Server");
-        //JButton btnShowAlgorithm = new JButton("Show Current Algorithm");
+
         JButton btnChangeAlgorithm = new JButton("Change Algorithm");
+        JToggleButton toggleAutoScale=new JToggleButton("Auto-Scaling OFF");
 
         lblAlgorithm = new JLabel("Current Algorithm: " + currentAlgorithm);
         lblTotalServers = new JLabel("Total Servers: " + serverList.size());
@@ -176,6 +188,26 @@ public class LoadBalancer {
                 );
             }
         });
+        // Style toggle just like other buttons
+        styleButton(toggleAutoScale, font, green);
+        // Disable default toggle grey pressed effect
+        toggleAutoScale.setContentAreaFilled(false);
+        toggleAutoScale.setOpaque(true);
+        toggleAutoScale.setForeground(Color.RED);
+        toggleAutoScale.addItemListener(e -> {
+            boolean enabled = e.getStateChange() == ItemEvent.SELECTED;
+            setAutoScalingEnabled(enabled);
+
+            if (enabled) {
+                toggleAutoScale.setText("Auto-Scaling: ON");
+                toggleAutoScale.setForeground(new Color(0, 255, 70)); // Matrix green
+            } else {
+                toggleAutoScale.setText("Auto-Scaling: OFF");
+                toggleAutoScale.setForeground(Color.RED); // Red when off
+            }
+        });
+
+
 
         btnChangeAlgorithm.addActionListener(e -> {
             // Apply Matrix theme to dialog
@@ -208,6 +240,7 @@ public class LoadBalancer {
         frame.add(btnAddServer);
         frame.add(btnRemoveServer);
         frame.add(btnChangeAlgorithm);
+        frame.add(toggleAutoScale);
         frame.add(lblAlgorithm);
         frame.add(lblTotalServers);
         frame.add(lblTotalRequests);
@@ -215,7 +248,7 @@ public class LoadBalancer {
         frame.setVisible(true);
     }
 
-    private static void styleButton(JButton btn, Font font, Color green) {
+    private static void styleButton(AbstractButton  btn, Font font, Color green) {
         btn.setFont(font);
         btn.setBackground(Color.BLACK);
         btn.setForeground(green);
@@ -230,4 +263,75 @@ public class LoadBalancer {
             lblTotalRequests.setText("Total Requests Made: " + totalRequests);
         });
     }
+
+    public static void setAutoScalingEnabled(boolean enabled) {
+            autoScalingEnabled = enabled;
+    }
+
+    public static boolean isAutoScalingEnabled() {
+        return autoScalingEnabled;
+    }
+    private static void startAutoScalingThread() {
+        new Thread(() -> {
+            int highLoadCount = 0;
+            int lowLoadCount = 0;
+            int MAX_SERVERS = 10;
+
+            while (true) {
+                try {
+                    Thread.sleep(SCALE_CHECK_INTERVAL);
+
+                    // 🔹 Skip scaling if auto-scaling is turned OFF
+                    if (!autoScalingEnabled) {
+                        continue;
+                    }
+
+                    int totalPending = serverList.stream()
+                            .mapToInt(Server::getPendingRequests)
+                            .sum();
+                    int avgPending = totalPending / serverList.size();
+
+                    System.out.println("[AutoScaler] Avg Pending: " + avgPending);
+
+                    // SCALE UP
+                    if (avgPending > HIGH_PENDING_THRESHOLD && serverList.size() < MAX_SERVERS) {
+                        highLoadCount++;
+                        lowLoadCount = 0;
+                        if (highLoadCount >= 2) {
+                            Server newServer = new Server(serverCount);
+                            serverList.add(newServer);
+                            serverCount++;
+                            newServer.start();
+                            updateUILabels();
+                            System.out.println("[AutoScaler] Added Server " + newServer.getServerId());
+                            highLoadCount = 0;
+                        }
+                    }
+                    // SCALE DOWN
+                    else if (avgPending < LOW_PENDING_THRESHOLD && serverList.size() > 1) {
+                        lowLoadCount++;
+                        highLoadCount = 0;
+                        if (lowLoadCount >= 3) {
+                            Server s = serverList.remove(serverList.size() - 1);
+                            s.shutdown();
+                            serverCount--;
+                            updateUILabels();
+                            System.out.println("[AutoScaler] Removed Server " + s.getServerId());
+                            lowLoadCount = 0;
+                        }
+                    } else {
+                        highLoadCount = 0;
+                        lowLoadCount = 0;
+                    }
+
+                } catch (InterruptedException e) {
+                    System.out.println("[AutoScaler] Interrupted");
+                    break;
+                }
+            }
+        }, "AutoScaler").start();
+    }
+
+
+
 }

@@ -40,14 +40,14 @@ public class Server extends Thread {
      */
     public void addRequest(UserRequest request) throws InterruptedException {
         serverQueue.put(request);
-        updateCurrentConnections();
+        updateCurrentConnections(); // increment pending count
     }
 
     /**
-     * Returns number of pending requests in queue.
+     * Returns number of pending requests (active + queued).
      */
     public int getPendingRequests() {
-        return serverQueue.size();
+        return currentConnections;
     }
 
     /**
