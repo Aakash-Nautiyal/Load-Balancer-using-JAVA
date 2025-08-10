@@ -53,12 +53,15 @@ It includes a **Swing-based GUI** 🎨 for real-time monitoring and control.
 ---
 
 ## 📂 Project Structure
+
+```plaintext
 src/
-├── 📄 Main.java – Sends UserRequest objects (Client simulation)
-├── 📄 LoadBalancer.java – Receives requests, distributes to servers
+├── 📄 Main.java                  – Sends UserRequest objects (Client simulation)
+├── 📄 LoadBalancer.java          – Receives requests, distributes to servers
 ├── 📄 LoadBalancerConsoleUI.java – Swing control panel for managing servers & settings
-├── 📄 Server.java – Simulated server processing requests
-├── 📄 UserRequest.java – Serializable request object
+├── 📄 Server.java                – Simulated server processing requests
+├── 📄 UserRequest.java           – Serializable request object
+
 
 📚 Key Learning Points
 🧠 Understanding how load balancers work
